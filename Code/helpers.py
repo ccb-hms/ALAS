@@ -82,7 +82,7 @@ def extract_text(html):
 # Function to compare two dataframes and find differences
 def check_new_data(course, quiz, apikey, azurekey, endpoint):
     headers = {"Authorization": f"Bearer {api_key}"}
-    pre_graded_df = pd.read_json('Code/Data/graded_quizzes.json')
+    pre_graded_df = pd.read_json('Data/graded_quizzes.json')
     un_graded = []
 
     try:
@@ -185,12 +185,12 @@ def check_new_data(course, quiz, apikey, azurekey, endpoint):
         print(f"Error fetching quizzes for course {course}: {e}")
         
     if len(un_graded) > 0:
-        with open('Code/Data/graded_quizzes.json', "r") as file:
+        with open('Data/graded_quizzes.json', "r") as file:
             data = file.read()[:-1]
-        with open('Code/Data/graded_quizzes.json', "w") as file:
+        with open('Data/graded_quizzes.json', "w") as file:
             file.write(data)
             file.write(',')
-        with open('Code/Data/graded_quizzes.json', "a") as outfile:
+        with open('Data/graded_quizzes.json', "a") as outfile:
             for record in un_graded:
                 if record == un_graded[-1]:
                     json.dump(record, outfile, indent=2)                
@@ -225,34 +225,64 @@ def grade_answer(student_answer, correct_answer, azurekey, endpoint):
 
 
 def instructor_feedback(course, quiz, azurekey, endpoint):
-    
     #sort/group the student scores into buckets
-    df = pd.read_json('Code/Data/graded_quizzes.json')
+    df = pd.read_json('Data/graded_quizzes.json')
 
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
     questions = list(subset['question_name'].unique())
     quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
     
-    question = questions[0]
-    # for question in questions:
+    level_one = {}
+    level_two = {}
     
+    for question in questions:
+        # Group the 'subset' into buckets based on 'accuracy' value
+        level_one[question] = level_one_feedback(question, subset, azurekey, endpoint)
+        level_two[question] = level_two_feedback(level_one[question], question, azurekey, endpoint)
+    
+    return level_three_feedback(level_two, azurekey, endpoint)
+
+
+def level_one_feedback(question, subset, azurekey, endpoint):
     question_subset = subset[subset['question_name'] == question]
     
     # Initialize an empty dictionary to hold the buckets
     buckets = {}
-
+    l1_feedback = []
     for accuracy_value in [1, 2, 3, 4]:
         # Group the 'subset' into buckets based on 'accuracy' value
         buckets[accuracy_value] = question_subset[question_subset['accuracy'] == accuracy_value]
 
     for accuracy_value, bucket in buckets.items():
-        break
+        if len(bucket) == 0:
+            l1_feedback.append(f"No students received a {accuracy_value} for this question.")
+        else:
+            student_answers = list(bucket['student_answer'])
+            correct_answer = bucket['question_answer'].unique().item()
+            prompt = f"The following students all received a {accuracy_value} for accuracy on a scale of 1-4 when compared to the correct answer. Come up with a summary in 100 words or less of why they received the score they did, what concepts they most frequently missed, and what concepts they most frequently got correct. \n Student answers:{student_answers} \n Correct answer: {correct_answer}."
 
-    student_answers = list(bucket['student_answer'])
-    correct_answer = bucket['question_answer'].item()
-    
-    prompt = f"The following students all received a {accuracy_value} for accuracy on a scale of 1-4 when compared to the correct answer. Come up with a summary in 100 words or less of why they received the score they did, what concepts they most frequently missed, and what concepts they most frequently got correct. \n Student answers:{student_answers} \n Correct answer: {correct_answer}."
+            client = AzureOpenAI(
+                    api_key = azurekey,
+                    azure_endpoint = endpoint,
+                    api_version = "2024-04-01-preview"
+                )
+
+            response = client.chat.completions.create(  model = "gpt-4o",
+                                                        messages=[
+                                                            {"role": "system", "content": "You are a helpful course Teaching Assistant designed to provide helpful feedback to an Instructor regarding how their students are performing on quizzes."},
+                                                            {"role": "user", "content": f"{prompt}"}
+                                                        ]
+                                                    )
+
+            question_feedback = response.choices[0].message.content
+            l1_feedback.append(question_feedback)
+    return l1_feedback
+
+
+
+def level_two_feedback(level_one, question, azurekey, endpoint):
+    prompt = f"Summarize the following feedback for {question}. Include what students most frequently missed, and what they most frequently correctly identified. {level_one}."
 
     client = AzureOpenAI(
             api_key = azurekey,
@@ -268,12 +298,30 @@ def instructor_feedback(course, quiz, azurekey, endpoint):
                                             )
 
     question_feedback = response.choices[0].message.content
-    return question_feedback
-    #level_one_feedback()
+    return(question_feedback)
+    
 
-    #level_two_feedback()
 
-    #level_three_feedback()
+def level_three_feedback(level_two, azurekey, endpoint):
+    prompt = f"Summarize the feedback provided in less than 100 words. Example summary: 'For this assessment exercise, students correctly identified concept A, B, and C. Students struggled to identify D, and lacked a detailed understanding of X. Exact mechanisms of Z were not well described. Overall, students have a solid grasp of basic concepts, but need more focus on understanding specific processes.' Feedback: {level_two}."
+
+    client = AzureOpenAI(
+            api_key = azurekey,
+            azure_endpoint = endpoint,
+            api_version = "2024-04-01-preview"
+        )
+
+    response = client.chat.completions.create(  model = "gpt-4o",
+                                                messages=[
+                                                    {"role": "system", "content": "You are a helpful course Teaching Assistant designed to provide helpful feedback to an Instructor regarding how their students are performing on quizzes."},
+                                                    {"role": "user", "content": f"{prompt}"}
+                                                ]
+                                            )
+
+    question_feedback = response.choices[0].message.content
+    return(question_feedback)    
+
+
 
 #TODO: ideas for instructor feedback:
 #Hierarchical
@@ -287,6 +335,16 @@ def instructor_feedback(course, quiz, azurekey, endpoint):
 #Level four: Report
 #Add a word limit in 500 words or less in the prompt
 
+#Data Quality Issue: Make CBB10 == CBB 10, same quiz just messy data
+
+#Filter by question
+
+#level one feedback: per bin
+#level two feedback: per question
+#level three feedback: per quiz
+#level four feedback: per quiz group
+
+#download report button
 
 
 
@@ -294,7 +352,7 @@ def instructor_feedback(course, quiz, azurekey, endpoint):
 
 def accuracy_per_question_bar(course, quiz):
     # Load the JSON data
-    df = pd.read_json('Code/Data/graded_quizzes.json')
+    df = pd.read_json('Data/graded_quizzes.json')
 
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
@@ -335,7 +393,7 @@ def accuracy_per_question_bar(course, quiz):
 
 def completeness_per_question_bar(course, quiz):
     # Load the JSON data
-    df = pd.read_json('Code/Data/graded_quizzes.json')
+    df = pd.read_json('Data/graded_quizzes.json')
 
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
@@ -376,7 +434,7 @@ def completeness_per_question_bar(course, quiz):
 
 def avg_of_scores_hist(course, quiz):
     # Load the JSON data
-    df = pd.read_json('Code/Data/graded_quizzes.json')
+    df = pd.read_json('Data/graded_quizzes.json')
 
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
@@ -420,7 +478,7 @@ def avg_of_scores_hist(course, quiz):
 
 def accuracy(course, quiz):
     # Load the JSON data
-    df = pd.read_json('Code/Data/graded_quizzes.json')
+    df = pd.read_json('Data/graded_quizzes.json')
 
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
@@ -482,7 +540,7 @@ def accuracy(course, quiz):
 
 def completeness(course, quiz):
     # Load the JSON data
-    df = pd.read_json('Code/Data/graded_quizzes.json')
+    df = pd.read_json('Data/graded_quizzes.json')
 
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
@@ -541,16 +599,3 @@ def completeness(course, quiz):
     )
 
     return fig
-
-
-
-#Data Quality Issue: Make CBB10 == CBB 10, same quiz just messy data
-
-#Filter by question
-
-#level one feedback: per bin
-#level two feedback: per question
-#level three feedback: per quiz
-#level four feedback: per quiz group
-
-#download report button
