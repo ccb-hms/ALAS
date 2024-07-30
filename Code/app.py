@@ -128,16 +128,13 @@ with ui.panel_absolute(width="75%"):
             @render.download(label="Download CSV", filename="data.csv")
             @reactive.event(input.download)
             def _():
-                df = pd.read_json('Code/Data/graded_quizzes.json')
+                df = pd.read_json('Data/graded_quizzes.json')
                 subset = df[(df['quiz_id']==int(input.cae())) & (df['course_id']==int(input.course()))]
                 yield subset.to_csv()
 
             @render.data_frame
             @reactive.event(input.generate)
             def table():
-                df = pd.read_json('Code/Data/graded_quizzes.json')
+                df = pd.read_json('Data/graded_quizzes.json')
                 subset = df[(df['quiz_id']==int(input.cae())) & (df['course_id']==int(input.course()))]
                 return render.DataGrid(subset)
-
-
-
