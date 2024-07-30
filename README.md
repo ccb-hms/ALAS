@@ -1,9 +1,9 @@
-# MedEd-AI
+# ALAS
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub issues](https://img.shields.io/github/issues/ccb-hms/MedEd-AI)](https://github.com/ccb-hms/MedEd-AI/issues)
-[![GitHub forks](https://img.shields.io/github/forks/ccb-hms/MedEd-AI)](https://github.com/ccb-hms/MedEd-AI/network)
-[![GitHub stars](https://img.shields.io/github/stars/ccb-hms/MedEd-AI)](https://github.com/ccb-hms/MedEd-AI/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/ccb-hms/ALAS)](https://github.com/ccb-hms/ALAS/issues)
+[![GitHub forks](https://img.shields.io/github/forks/ccb-hms/ALAS)](https://github.com/ccb-hms/ALAS/network)
+[![GitHub stars](https://img.shields.io/github/stars/ccb-hms/ALAS)](https://github.com/ccb-hms/ALAS/stargazers)
 
 ## Table of Contents
 
@@ -16,12 +16,12 @@
 
 ## Overview
 
-MedEd-AI is a project aimed at harnessing generative AI to create learner-centered and evidence-based instructor feedback. Developed in collaboration with Harvard Medical School's MD Program Pathways curricular track, this project seeks to revolutionize medical education by leveraging the power of artificial intelligence as a tool for faculty to more deeply understand how students are performing holistically, outside of traditional quantitative grading.
+ALAS (Automated Learning Assessment System) is a project aimed at harnessing generative AI to create learner-centered and evidence-based instructor feedback. Developed in collaboration with Harvard Medical School's MD Program Pathways curricular track, this project seeks to revolutionize medical education by leveraging the power of artificial intelligence as a tool for faculty to more deeply understand how students are performing holistically, outside of traditional quantitative grading.
 
 
 ## Usage
 
-MedEd-AI's Web App is currently in development, but will be accessible to HMS faculty beginning Aug 6, 2024. Check back here for important updates and access information.
+ALAS's Web App is currently in development, but will be accessible to HMS faculty beginning Aug 6, 2024. Check back here for important updates and access information.
 
 
 ## Contributing
