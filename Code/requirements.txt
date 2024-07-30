@@ -1,0 +1,15 @@
+python-dotenv
+pandas
+llama_index
+llama-index-embeddings-azure-openai
+llama-index-llms-azure-openai
+numpy
+sqlalchemy
+langchain
+openai
+requests
+plotly
+matplotlib
+scikit-learn
+shiny
+shinywidgets

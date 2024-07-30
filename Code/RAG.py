@@ -1,34 +1,21 @@
 from __future__ import print_function
 import logging
-import sys
 import os
 import pandas as pd
 import glob
 from dotenv import load_dotenv
 import logging
-import sys
-import duckdb
 from llama_index.embeddings.azure_openai import AzureOpenAIEmbedding
 from llama_index.llms.azure_openai import AzureOpenAI
 from llama_index.core import ( Settings, VectorStoreIndex, SimpleDirectoryReader)
 from llama_index.core.callbacks import CallbackManager, LlamaDebugHandler
 from llama_index.core import (StorageContext, ServiceContext)
-from llama_index.core.node_parser import MarkdownNodeParser
-import datetime
 import numpy as np
-from llama_index.core.vector_stores import MetadataFilter, MetadataFilters, ExactMatchFilter
 from sqlalchemy import *
-from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.tools import QueryEngineTool
-from llama_index.core.tools import ToolMetadata
-from llama_index.core.query_engine import SubQuestionQueryEngine
 from llama_index.core import SQLDatabase, Document
-from llama_index.core.query_engine import NLSQLTableQueryEngine
 from llama_index.core.indices.struct_store import SQLTableRetrieverQueryEngine
 from llama_index.core.retrievers import VectorIndexAutoRetriever
 from llama_index.core.query_engine import RetrieverQueryEngine
-from llama_index.core.node_parser import SentenceWindowNodeParser
-from llama_index.core.query_engine import SQLJoinQueryEngine
 from llama_index.vector_stores.duckdb import DuckDBVectorStore
 from llama_index.core.retrievers import VectorIndexAutoRetriever
 from llama_index.core.vector_stores import MetadataInfo, VectorStoreInfo
@@ -36,11 +23,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from llama_index.core.node_parser import LangchainNodeParser
 from sqlalchemy import (create_engine,MetaData,Table,Column,String,Integer,select,column,)
 from sqlalchemy.dialects.postgresql import (INTEGER, FLOAT, BIGINT, VARCHAR, DOUBLE_PRECISION)
-from llama_index.core.query_engine import NLSQLTableQueryEngine
 from llama_index.core.indices.struct_store import SQLTableRetrieverQueryEngine
 from llama_index.core.objects import (SQLTableNodeMapping,ObjectIndex,SQLTableSchema,)
 from llama_index.core import VectorStoreIndex
-from llama_index.core.query_engine import SQLAutoVectorQueryEngine
 
 logging.getLogger().setLevel(logging.ERROR)
 

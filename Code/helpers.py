@@ -1,57 +1,13 @@
 from __future__ import print_function
-import matplotlib.pyplot as plt
 import pandas as pd
-from dotenv import load_dotenv
 from openai import AzureOpenAI
 import json
 import requests
-import os
-import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
-from llama_index.embeddings.azure_openai import AzureOpenAIEmbedding
 from llama_index.llms.azure_openai import AzureOpenAI as AzureOAI
-from llama_index.core import Settings
-from RAG import create_sql_engine, create_query_engine
-from llama_index.core.tools import QueryEngineTool
-from llama_index.core.query_engine import SQLAutoVectorQueryEngine
 import re
-import plotly.express as px
 import plotly.graph_objects as go
-
-load_dotenv('/Credentials/.env')
-
-#Azure OpenAI Creds
-endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-credential = os.getenv("AZURE_OPENAI_API_KEY")
-azure_openai_api_version = "2024-04-01-preview"
-azure_openai_embedding_deployment = "text-embedding-ada-002"
-embedding_model_name = "text-embedding-ada-002"
-llm_model_name = "gpt-4o"
-api_type = "azure"
-api_key = os.getenv("CANVAS_API_KEY")
-
-llm = AzureOAI(
-            model = llm_model_name,
-            deployment_name = llm_model_name,
-            api_key = credential,
-            azure_endpoint = endpoint,
-            api_version = azure_openai_api_version,
-            api_type = api_type
-        )
-
-embed_model = AzureOpenAIEmbedding(
-            model = embedding_model_name,
-            deployment_name = embedding_model_name,
-            api_key = credential,
-            azure_endpoint = endpoint,
-            api_version = azure_openai_api_version,
-            api_type = api_type,
-            embed_batch_size=50
-        )
-
-Settings.llm = llm
-Settings.embed_model = embed_model
+from sklearn.linear_model import LinearRegression
 
 def get_courses(api_key):
     url = "https://canvas.harvard.edu/api/v1/courses"
@@ -124,9 +80,9 @@ def extract_text(html):
     return extracted_text
 
 # Function to compare two dataframes and find differences
-def check_new_data(course, quiz):
+def check_new_data(course, quiz, apikey, azurekey, endpoint):
     headers = {"Authorization": f"Bearer {api_key}"}
-    pre_graded_df = pd.read_json('/Data/graded_quizzes_202407111420.json')
+    pre_graded_df = pd.read_json('Code/Data/graded_quizzes.json')
     un_graded = []
 
     try:
@@ -207,7 +163,7 @@ def check_new_data(course, quiz):
                             write_dict['student_score'] = student_score
                             write_dict['course_id'] = course
 
-                            accuracy, completeness = grade_answer(write_dict['student_answer'], write_dict['question_answer'])
+                            accuracy, completeness = grade_answer(write_dict['student_answer'], write_dict['question_answer'], azurekey, endpoint)
                             write_dict['accuracy'] = accuracy
                             write_dict['completeness'] = completeness
                             
@@ -229,12 +185,12 @@ def check_new_data(course, quiz):
         print(f"Error fetching quizzes for course {course}: {e}")
         
     if len(un_graded) > 0:
-        with open(f'/Data/graded_quizzes_202407111420.json', "r") as file:
+        with open('Code/Data/graded_quizzes.json', "r") as file:
             data = file.read()[:-1]
-        with open(f'/Data/graded_quizzes_202407111420.json', "w") as file:
+        with open('Code/Data/graded_quizzes.json', "w") as file:
             file.write(data)
             file.write(',')
-        with open(f'/Data/graded_quizzes_202407111420.json', "a") as outfile:
+        with open('Code/Data/graded_quizzes.json', "a") as outfile:
             for record in un_graded:
                 if record == un_graded[-1]:
                     json.dump(record, outfile, indent=2)                
@@ -244,16 +200,16 @@ def check_new_data(course, quiz):
                     outfile.write('\n')
             outfile.write(']')
 
-def grade_answer(student_answer, correct_answer):
+def grade_answer(student_answer, correct_answer, azurekey, endpoint):
     prompt = "Compare the student answer to the correct answer. Rate the accuracy (a measure of how correct the student is) and completeness (did the student identify all components of the question) of the student answer according to these scales: Accuracy Options: 1 - not accurate, 2 - somewhat accurate, 3 - mostly accurate, 4 - completely accurate. Completeness: 1 - incomplete, 2 - partially complete, 3 - mostly complete, 4 - complete. Explain your answer briefly. Format your answer as a list separated by |. Example: 3|4|explanation" +f"Student Answer:{student_answer}\nCorrect Answer:{correct_answer}."
 
     client = AzureOpenAI(
-            api_key = credential,
+            api_key = azurekey,
             azure_endpoint = endpoint,
-            api_version = azure_openai_api_version
+            api_version = "2024-04-01-preview"
         )
 
-    response = client.chat.completions.create(  model = llm_model_name,
+    response = client.chat.completions.create(  model = "gpt-4o",
                                                 messages=[
                                                     {"role": "system", "content": "You are a helpful course Teaching Assistant."},
                                                     {"role": "user", "content": f"{prompt}"}
@@ -268,7 +224,56 @@ def grade_answer(student_answer, correct_answer):
     return accuracy, completeness
 
 
-def instructor_feedback(course, quiz): 
+def instructor_feedback(course, quiz, azurekey, endpoint):
+    
+    #sort/group the student scores into buckets
+    df = pd.read_json('Code/Data/graded_quizzes.json')
+
+    # Filter the DataFrame
+    subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
+    questions = list(subset['question_name'].unique())
+    quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
+    
+    question = questions[0]
+    # for question in questions:
+    
+    question_subset = subset[subset['question_name'] == question]
+    
+    # Initialize an empty dictionary to hold the buckets
+    buckets = {}
+
+    for accuracy_value in [1, 2, 3, 4]:
+        # Group the 'subset' into buckets based on 'accuracy' value
+        buckets[accuracy_value] = question_subset[question_subset['accuracy'] == accuracy_value]
+
+    for accuracy_value, bucket in buckets.items():
+        break
+
+    student_answers = list(bucket['student_answer'])
+    correct_answer = bucket['question_answer'].item()
+    
+    prompt = f"The following students all received a {accuracy_value} for accuracy on a scale of 1-4 when compared to the correct answer. Come up with a summary in 100 words or less of why they received the score they did, what concepts they most frequently missed, and what concepts they most frequently got correct. \n Student answers:{student_answers} \n Correct answer: {correct_answer}."
+
+    client = AzureOpenAI(
+            api_key = azurekey,
+            azure_endpoint = endpoint,
+            api_version = "2024-04-01-preview"
+        )
+
+    response = client.chat.completions.create(  model = "gpt-4o",
+                                                messages=[
+                                                    {"role": "system", "content": "You are a helpful course Teaching Assistant designed to provide helpful feedback to an Instructor regarding how their students are performing on quizzes."},
+                                                    {"role": "user", "content": f"{prompt}"}
+                                                ]
+                                            )
+
+    question_feedback = response.choices[0].message.content
+    return question_feedback
+    #level_one_feedback()
+
+    #level_two_feedback()
+
+    #level_three_feedback()
 
 #TODO: ideas for instructor feedback:
 #Hierarchical
@@ -283,227 +288,95 @@ def instructor_feedback(course, quiz):
 #Add a word limit in 500 words or less in the prompt
 
 
-    sql_query_engine = create_sql_engine()
-    retriever_query_engine = create_query_engine()
-
-    sql_tool = QueryEngineTool.from_defaults(
-        query_engine=sql_query_engine,
-        description=(
-            "Useful for translating a natural language query into a SQL query over"
-            "a table graded_quizzes, containing columns:"
-            "quiz_id (INTEGER), quiz_type (VARCHAR), quiz_title (VARCHAR), history_id (BIGINT), submission_id (BIGINT),"
-            "student_score (DOUBLE PRECISION), quiz_question_count (BIGINT), quiz_points_possible (DOUBLE PRECISION), question_points_possible (DOUBLE PRECISION),"
-            "answer_points_scored (DOUBLE PRECISION), attempt (BIGINT), question_name (VARCHAR), question_type (VARCHAR), question_text (VARCHAR), question_answer (VARCHAR), student_answer (VARCHAR),"
-            "course_id (VARCHAR), accuracy (INTEGER), completeness (INTEGER)"),
-    )
 
 
-    vector_tool = QueryEngineTool.from_defaults(
-            query_engine=retriever_query_engine,
-            description=f"Useful for answering semantic questions about consolidation assessments, and general course-related questions like when certain material is being taught",
-        )
+#GRAPHS
 
-
-    query_engine = SQLAutoVectorQueryEngine(
-    sql_tool, 
-    vector_tool,
-    llm=llm
-    ) 
-
-    response = query_engine.query(f"List all correct answers to Question 1 question answer for quiz_id '{int(quiz)}'.")
-
-    # response = query_engine.query(f"For Question 1 of course_id '{int(course)}' and quiz_id '{int(quiz)}', compare student answers to the question answer. Do not include the table name in your SQL statement. What concept did students best understand? Which concept was most frequently not mentioned?")
-    # response = query_engine.query(f"For course_id {int(course)} and quiz_id {int(quiz)}, which questions did the students have the worst average completeness and average accuracy?")
-    return response.response
-                
-
-def plot_distribution(course, quiz):  
-
-    df = pd.read_json('/Data/graded_quizzes_202407111420.json')
-
-    # Filter the DataFrame
-    subset = df[(df['quiz_id']==int(quiz)) & (df['course_id']==int(course))]
-
-    # Assuming 'subset' is your pre-filtered DataFrame
-    # Plot distribution of accuracy
-    plt.figure(figsize=(12, 6))
-
-    plt.subplot(1, 2, 1)
-    sns.histplot(subset['accuracy'], kde=True)
-    plt.title('Distribution of Accuracy')
-    plt.xlabel('Accuracy')
-    plt.ylabel('Frequency')
-
-    # Plot distribution of completeness
-    plt.subplot(1, 2, 2)
-    sns.histplot(subset['completeness'], kde=True)
-    plt.title('Distribution of Completeness')
-    plt.xlabel('Completeness')
-    plt.ylabel('Frequency')
-
-    plt.tight_layout()
-    
-    return plt.gcf()
-
-def plot_question_performance(course, quiz):
-    
-    df = pd.read_json('/Data/graded_quizzes_202407111420.json')
-
-    # Filter the DataFrame
-    subset = df[(df['quiz_id']==int(quiz)) & (df['course_id']==int(course))]
-        
-    question_performance = subset.groupby('question_name')[['accuracy', 'completeness']].mean().reset_index()
-
-    # Bar plot of average accuracy per question
-    plt.figure(figsize=(14, 6))
-
-    plt.subplot(1, 2, 1)
-    sns.barplot(data=question_performance, x='accuracy', y='question_name', palette='viridis')
-    plt.title('Average Accuracy per Question')
-    plt.xlabel('Average Accuracy')
-    plt.ylabel('Question Name')
-
-    # Bar plot of average completeness per question
-    plt.subplot(1, 2, 2)
-    sns.barplot(data=question_performance, x='completeness', y='question_name', palette='viridis')
-    plt.title('Average Completeness per Question')
-    plt.xlabel('Average Completeness')
-    plt.ylabel('Question Name')
-
-    plt.tight_layout()
-    return plt.gcf()
-
-#Distribution of accuracy/completeness histogram, not stacked
-
-def accuracy(course, quiz):
-#TODO: rather than accuracy across questions, do average accuracy per quiz, from start of course to end
+def accuracy_per_question_bar(course, quiz):
     # Load the JSON data
-    df = pd.read_json('/Data/graded_quizzes_202407111420.json')
+    df = pd.read_json('Code/Data/graded_quizzes.json')
 
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
     quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
-    
-    # avg = subset.groupby('submission_id', as_index=False)['accuracy'].mean()
 
-    # Filter for quizzes with 'Histology' in the title
-    quiz_group_subset = df[df['quiz_title'].str.startswith(quiz_group)]
+    # Count the number of students who scored 1, 2, 3, or 4 per question
+    score_counts = subset.groupby(['question_name', 'accuracy']).size().unstack(fill_value=0).reset_index()
 
-    # Calculate average accuracy per question per quiz
-    average_accuracy_per_question = quiz_group_subset.groupby(['quiz_title', 'question_name'])['accuracy'].mean().reset_index()
-
-    # Round the averages to the nearest hundredth
-    average_accuracy_per_question['accuracy'] = average_accuracy_per_question['accuracy'].round(2)
+    # Normalize the counts as a percentage of the total responses per question
+    score_counts.set_index('question_name', inplace=True)
+    score_percentages = score_counts.div(score_counts.sum(axis=1), axis=0).reset_index()
 
     # Create a plotly figure
     fig = go.Figure()
 
-    # Get unique quizzes
-    quizzes = average_accuracy_per_question['quiz_title'].unique()
-
-    # Plot each quiz separately
-    for quiz in quizzes:
-        quiz_data = average_accuracy_per_question[average_accuracy_per_question['quiz_title'] == quiz]
-        fig.add_trace(go.Scatter(
-            x=quiz_data['question_name'], 
-            y=quiz_data['accuracy'], 
-            mode='lines+markers', 
-            name=quiz,
-            hoverinfo='text',
-            text=quiz_data['accuracy']
-        ))
+    # Plot each score group as a separate bar series
+    for score in [1, 2, 3, 4]:
+        if score in score_percentages.columns:
+            fig.add_trace(go.Bar(
+                x=score_percentages['question_name'],
+                y=score_percentages[score] * 100,  # Convert to percentage
+                name=f'Accuracy Score {score}',
+                text=(score_percentages[score] * 100).round(2).astype(str) + '%',
+                textposition='auto',
+                hoverinfo='none'  # Disable hover data
+            ))
 
     # Update layout
     fig.update_layout(
-        title=f'Average Accuracy Per Question for {quiz_group} Quizzes',
+        title=f'Students per Accuracy Score Group - {quiz_group}',
         xaxis_title='Question Name',
-        yaxis_title='Average Accuracy',
-        legend_title='Quiz Title',
+        yaxis_title='Percentage of Scores',
+        barmode='group',  # Group bars together
         margin=dict(l=40, r=40, t=40, b=40)
     )
 
     return fig
 
-def completeness(course, quiz):
-
+def completeness_per_question_bar(course, quiz):
     # Load the JSON data
-    df = pd.read_json('/Data/graded_quizzes_202407111420.json')
+    df = pd.read_json('Code/Data/graded_quizzes.json')
 
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
     quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
 
-    # Filter for quizzes with 'Histology' in the title
-    quiz_group_subset = df[df['quiz_title'].str.startswith(quiz_group)]
+    # Count the number of students who scored 1, 2, 3, or 4 per question
+    score_counts = subset.groupby(['question_name', 'completeness']).size().unstack(fill_value=0).reset_index()
 
-    # Calculate average completeness per question per quiz
-    average_completeness_per_question = quiz_group_subset.groupby(['quiz_title', 'question_name'])['completeness'].mean().reset_index()
-
-    # Round the averages to the nearest hundredth
-    average_completeness_per_question['completeness'] = average_completeness_per_question['completeness'].round(2)
+    # Normalize the counts as a percentage of the total responses per question
+    score_counts.set_index('question_name', inplace=True)
+    score_percentages = score_counts.div(score_counts.sum(axis=1), axis=0).reset_index()
 
     # Create a plotly figure
     fig = go.Figure()
 
-    # Get unique quizzes
-    quizzes = average_completeness_per_question['quiz_title'].unique()
-
-    # Plot each quiz separately
-    for quiz in quizzes:
-        quiz_data = average_completeness_per_question[average_completeness_per_question['quiz_title'] == quiz]
-        fig.add_trace(go.Scatter(
-            x=quiz_data['question_name'], 
-            y=quiz_data['completeness'], 
-            mode='lines+markers', 
-            name=quiz,
-            hoverinfo='text',
-            text=quiz_data['completeness']
-        ))
+    # Plot each score group as a separate bar series
+    for score in [1, 2, 3, 4]:
+        if score in score_percentages.columns:
+            fig.add_trace(go.Bar(
+                x=score_percentages['question_name'],
+                y=score_percentages[score] * 100,  # Convert to percentage
+                name=f'Completeness Score {score}',
+                text=(score_percentages[score] * 100).round(2).astype(str) + '%',
+                textposition='auto',
+                hoverinfo='none'  # Disable hover data
+            ))
 
     # Update layout
     fig.update_layout(
-        title=f'Average Completeness Per Question for {quiz_group} Quizzes',
+        title=f'Students per Completeness Score Group - {quiz_group}',
         xaxis_title='Question Name',
-        yaxis_title='Average Completeness',
-        legend_title='Quiz Title',
+        yaxis_title='Percentage of Scores',
+        barmode='group',  # Group bars together
         margin=dict(l=40, r=40, t=40, b=40)
     )
 
     return fig
 
-def average_accuracy_per_question_bar(course, quiz):
+def avg_of_scores_hist(course, quiz):
     # Load the JSON data
-    df = pd.read_json('/Data/graded_quizzes_202407111420.json')
-
-    # Filter the DataFrame
-    subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
-
-    quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
-
-    average_accuracy = subset.groupby('question_name')['accuracy'].mean().reset_index()
-    average_accuracy['accuracy'] = average_accuracy['accuracy'].round(2)
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=average_accuracy['question_name'],
-        y=average_accuracy['accuracy'],
-        text=average_accuracy['accuracy'],
-        textposition='auto',
-        hoverinfo='none'  # Disable hover data
-    ))
-
-    fig.update_layout(
-        title= f'Average Accuracy per Question - {quiz_group}',
-        xaxis_title='Question Name',
-        yaxis_title='Average Accuracy',
-        margin=dict(l=40, r=40, t=40, b=40)
-    )
-
-    return fig
-
-def distribution_of_scores_hist(course, quiz):
-    # Load the JSON data
-    df = pd.read_json('/Data/graded_quizzes_202407111420.json')
+    df = pd.read_json('Code/Data/graded_quizzes.json')
 
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
@@ -544,3 +417,140 @@ def distribution_of_scores_hist(course, quiz):
     )
 
     return fig
+
+def accuracy(course, quiz):
+    # Load the JSON data
+    df = pd.read_json('Code/Data/graded_quizzes.json')
+
+    # Filter the DataFrame
+    subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
+    quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
+
+    # Filter for quizzes with the same quiz group in the title
+    quiz_group_subset = df[df['quiz_title'].str.startswith(quiz_group)]
+
+    # Calculate average total accuracy per quiz
+    average_accuracy_per_quiz = quiz_group_subset.groupby('quiz_title')['accuracy'].mean().reset_index()
+
+    # Round the averages to the nearest hundredth
+    average_accuracy_per_quiz['accuracy'] = average_accuracy_per_quiz['accuracy'].round(2)
+
+    # Extract the numerical part of the quiz titles for proper sorting
+    average_accuracy_per_quiz['quiz_num'] = average_accuracy_per_quiz['quiz_title'].str.extract(r'(\d+)').astype(int)
+
+    # Sort the dataframe by the numerical part of the quiz titles
+    average_accuracy_per_quiz = average_accuracy_per_quiz.sort_values(by='quiz_num')
+
+    # Create a plotly figure
+    fig = go.Figure()
+
+    # Plot the average accuracy per quiz
+    fig.add_trace(go.Scatter(
+        x=average_accuracy_per_quiz['quiz_title'], 
+        y=average_accuracy_per_quiz['accuracy'], 
+        mode='lines+markers', 
+        name='Average Accuracy',
+        hoverinfo='text',
+        text=average_accuracy_per_quiz['accuracy']))
+
+    # Add trend line using linear regression
+    X = average_accuracy_per_quiz['quiz_num'].values.reshape(-1, 1)
+    y = average_accuracy_per_quiz['accuracy'].values
+
+    # Fit linear regression model
+    model = LinearRegression()
+    model.fit(X, y)
+    trend_line = model.predict(X)
+
+    fig.add_trace(go.Scatter(
+        x=average_accuracy_per_quiz['quiz_title'],
+        y=trend_line,
+        mode='lines',
+        name='Average Total Accuracy Over Time',
+        line=dict(dash='dash')
+    ))
+
+    # Update layout
+    fig.update_layout(
+        title=f'Average Total Accuracy for {quiz_group} Quizzes',
+        xaxis_title='Quiz Title',
+        yaxis_title='Average Total Accuracy',
+        margin=dict(l=40, r=40, t=40, b=40)
+    )
+
+    return fig
+
+def completeness(course, quiz):
+    # Load the JSON data
+    df = pd.read_json('Code/Data/graded_quizzes.json')
+
+    # Filter the DataFrame
+    subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
+    quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
+
+    # Filter for quizzes with the same quiz group in the title
+    quiz_group_subset = df[df['quiz_title'].str.startswith(quiz_group)]
+
+    # Calculate average total completeness per quiz
+    average_completeness_per_quiz = quiz_group_subset.groupby('quiz_title')['completeness'].mean().reset_index()
+
+    # Round the averages to the nearest hundredth
+    average_completeness_per_quiz['completeness'] = average_completeness_per_quiz['completeness'].round(2)
+
+    # Extract the numerical part of the quiz titles for proper sorting
+    average_completeness_per_quiz['quiz_num'] = average_completeness_per_quiz['quiz_title'].str.extract(r'(\d+)').astype(int)
+
+    # Sort the dataframe by the numerical part of the quiz titles
+    average_completeness_per_quiz = average_completeness_per_quiz.sort_values(by='quiz_num')
+
+    # Create a plotly figure
+    fig = go.Figure()
+
+    # Plot the average completeness per quiz
+    fig.add_trace(go.Scatter(
+        x=average_completeness_per_quiz['quiz_title'], 
+        y=average_completeness_per_quiz['completeness'], 
+        mode='lines+markers', 
+        name='Average Completeness',
+        hoverinfo='text',
+        text=average_completeness_per_quiz['completeness']))
+
+    # Add trend line using linear regression
+    X = average_completeness_per_quiz['quiz_num'].values.reshape(-1, 1)
+    y = average_completeness_per_quiz['completeness'].values
+
+    # Fit linear regression model
+    model = LinearRegression()
+    model.fit(X, y)
+    trend_line = model.predict(X)
+
+    fig.add_trace(go.Scatter(
+        x=average_completeness_per_quiz['quiz_title'],
+        y=trend_line,
+        mode='lines',
+        name='Average Total Completeness Over Time',
+        line=dict(dash='dash')
+    ))
+
+    # Update layout
+    fig.update_layout(
+        title=f'Average Total Completeness for {quiz_group} Quizzes',
+        xaxis_title='Quiz Title',
+        yaxis_title='Average Total completeness',
+        margin=dict(l=40, r=40, t=40, b=40)
+    )
+
+    return fig
+
+
+
+#Data Quality Issue: Make CBB10 == CBB 10, same quiz just messy data
+
+#Filter by question
+
+#level one feedback: per bin
+#level two feedback: per question
+#level three feedback: per quiz
+#level four feedback: per quiz group
+
+#download report button
