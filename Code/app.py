@@ -1,21 +1,26 @@
-import sys
+# -*- coding: utf-8 -*-
+"""
+This module contains the ALAS Shiny for Python web application for visualizing quiz data 
+and generating feedback for instructors of the Pathways courses.
+"""
+
 import matplotlib
-import numpy as np
 import pandas as pd
-from helpers import  check_new_data, accuracy, completeness, accuracy_per_question_bar, completeness_per_question_bar, avg_of_scores_hist, instructor_feedback, get_courses, get_quizzes
+from helpers import  (check_new_data,
+                      accuracy,
+                      completeness,
+                      accuracy_per_question_bar,
+                      completeness_per_question_bar,
+                      avg_of_scores_hist,
+                      instructor_feedback,
+                      get_courses,
+                      get_quizzes)
 from shiny.express import input, output, render, ui
 from shiny import reactive
 from shinywidgets import output_widget, render_widget 
-import os
 
-# The agg matplotlib backend seems to be a little more efficient than the default when
-# running on macOS, and also gives more consistent results across operating systems
+
 matplotlib.use("agg")
-
-# max number of samples to retain
-MAX_SAMPLES = 1000
-# secs between samples
-SAMPLE_PERIOD = 1
 
 ui.tags.style(
     """
@@ -86,32 +91,42 @@ with ui.panel_absolute(width="75%"):
             check_new_data(input.course(), input.cae(), input.apikey(), input.azurekey(), input.endpoint())     
 
         with ui.nav_panel(title="Graphs"):
-            #accuracy per question plot
+            """
+            Render bar plot for accuracy per question.
+            """
             @render_widget
             @reactive.event(input.generate)
             def plot_average_accuracy_per_question_bar():
                 return accuracy_per_question_bar(input.course(), input.cae())
 
-            #completeness per question plot
+            """
+            Render bar plot for completeness per question.
+            """
             @render_widget
             @reactive.event(input.generate)
             def plot_completeness_accuracy_per_question_bar():
                 return completeness_per_question_bar(input.course(), input.cae())
 
 
-            #dist of accuracy&completeness scores histogram
+            """
+            Render histogram for average accuracy and completeness per question.
+            """
             @render_widget
             @reactive.event(input.generate)
             def plot_avg_of_scores_hist():
                 return avg_of_scores_hist(input.course(), input.cae())
 
-            #accuracy plot across similar questions
+            """
+            Render accuracy line plot across quizzes in series.
+            """
             @render_widget
             @reactive.event(input.generate)
             def plot_accuracy():
                 return accuracy(input.course(), input.cae())
 
-            #completeness plot across similar questions
+            """
+            Render completeness line plot across quizzes in series.
+            """
             @render_widget
             @reactive.event(input.generate)
             def plot_completeness():
@@ -119,12 +134,18 @@ with ui.panel_absolute(width="75%"):
 
 
         with ui.nav_panel(title="Topics"):
+            """
+            Render text feedback for the instructor
+            """
             @render.text
             @reactive.event(input.generate)
             def feedback():
                 return instructor_feedback(input.course(), input.cae(), input.azurekey(), input.endpoint())
 
         with ui.nav_panel(title="Source Data"):
+            """
+            Render downloadable CSV button
+            """
             @render.download(label="Download CSV", filename="data.csv")
             @reactive.event(input.download)
             def _():
@@ -132,6 +153,9 @@ with ui.panel_absolute(width="75%"):
                 subset = df[(df['quiz_id']==int(input.cae())) & (df['course_id']==int(input.course()))]
                 yield subset.to_csv()
 
+            """
+            Render datafram that will be downloaded as CSV
+            """
             @render.data_frame
             @reactive.event(input.generate)
             def table():
