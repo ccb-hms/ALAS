@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-This module contains the ALAS Shiny for Python web application for visualizing quiz data 
-and generating feedback for instructors of the Pathways courses.
-"""
-
 import matplotlib
 import pandas as pd
 from helpers import  (check_new_data,
@@ -18,8 +13,6 @@ from helpers import  (check_new_data,
 from shiny.express import input, output, render, ui
 from shiny import reactive
 from shinywidgets import output_widget, render_widget 
-
-
 matplotlib.use("agg")
 
 ui.tags.style(
@@ -77,9 +70,8 @@ with ui.sidebar():
     @reactive.event(input.next)
     def _():
         if input.course():
-            courses_dict = get_courses(input.apikey())
             quiz_dict = get_quizzes(input.apikey(), input.course())
-            ui.update_selectize("cae", choices=quiz_dict)            
+            ui.update_selectize("cae", choices=quiz_dict)      
         else:
             print("No course input")
 
