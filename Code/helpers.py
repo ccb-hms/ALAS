@@ -29,7 +29,7 @@ def get_courses(api_key):
     while True:
         params = {"page": page}
         try:
-            response = requests.get(base_url, headers=headers, params=params, timeout=5)
+            response = requests.get(base_url, headers=headers, params=params, timeout=15)
             response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
             courses_page = json.loads(response.text)  # Convert response text to dict
             for course in courses_page:
@@ -64,7 +64,7 @@ def get_quizzes(api_key, course):
     while True:
         params = {"page": page, "per_page":"100"}
         try:
-            response = requests.get(base_url+course_api, headers=headers, params=params, timeout=5)
+            response = requests.get(base_url+course_api, headers=headers, params=params, timeout=15)
             response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
             quizzes_page = json.loads(response.text)  # Convert response text to dict
             for quiz in quizzes_page:
@@ -126,13 +126,13 @@ def check_new_data(course, quiz, apikey, azurekey, endpoint):
 
     try:
         url = f"{base_url}{course}/quizzes/{quiz}"
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
         quiz_page = json.loads(response.text)  # Convert response text to dict
         assignment_id = quiz_page['assignment_id']
 
         url = f"{base_url}{course}/quizzes/{quiz}/questions"
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
         questions_page = json.loads(response.text)  # Convert response text to dict
         qdf = pd.DataFrame.from_dict(questions_page)
@@ -143,7 +143,7 @@ def check_new_data(course, quiz, apikey, azurekey, endpoint):
             url = f"{base_url}{course}/assignments/{assignment_id}/submissions"
             params = {"page": page, "include[]":"submission_history","per_page":"100"}
 
-            response = requests.get(url, headers=headers, params=params, timeout=5)
+            response = requests.get(url, headers=headers, params=params, timeout=15)
             response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
             submissions_page = json.loads(response.text)  # Convert response text to dict
             for user_submission in submissions_page:
