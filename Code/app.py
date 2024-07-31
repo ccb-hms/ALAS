@@ -91,42 +91,30 @@ with ui.panel_absolute(width="75%"):
             check_new_data(input.course(), input.cae(), input.apikey(), input.azurekey(), input.endpoint())     
 
         with ui.nav_panel(title="Graphs"):
-            """
-            Render bar plot for accuracy per question.
-            """
             @render_widget
             @reactive.event(input.generate)
             def plot_average_accuracy_per_question_bar():
                 return accuracy_per_question_bar(input.course(), input.cae())
 
-            """
-            Render bar plot for completeness per question.
-            """
+
             @render_widget
             @reactive.event(input.generate)
             def plot_completeness_accuracy_per_question_bar():
                 return completeness_per_question_bar(input.course(), input.cae())
 
 
-            """
-            Render histogram for average accuracy and completeness per question.
-            """
             @render_widget
             @reactive.event(input.generate)
             def plot_avg_of_scores_hist():
                 return avg_of_scores_hist(input.course(), input.cae())
 
-            """
-            Render accuracy line plot across quizzes in series.
-            """
+
             @render_widget
             @reactive.event(input.generate)
             def plot_accuracy():
                 return accuracy(input.course(), input.cae())
 
-            """
-            Render completeness line plot across quizzes in series.
-            """
+
             @render_widget
             @reactive.event(input.generate)
             def plot_completeness():
@@ -134,18 +122,12 @@ with ui.panel_absolute(width="75%"):
 
 
         with ui.nav_panel(title="Topics"):
-            """
-            Render text feedback for the instructor
-            """
             @render.text
             @reactive.event(input.generate)
             def feedback():
                 return instructor_feedback(input.course(), input.cae(), input.azurekey(), input.endpoint())
 
         with ui.nav_panel(title="Source Data"):
-            """
-            Render downloadable CSV button
-            """
             @render.download(label="Download CSV", filename="data.csv")
             @reactive.event(input.download)
             def _():
@@ -153,9 +135,6 @@ with ui.panel_absolute(width="75%"):
                 subset = df[(df['quiz_id']==int(input.cae())) & (df['course_id']==int(input.course()))]
                 yield subset.to_csv()
 
-            """
-            Render datafram that will be downloaded as CSV
-            """
             @render.data_frame
             @reactive.event(input.generate)
             def table():
