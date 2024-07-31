@@ -21,15 +21,16 @@ def get_courses(api_key):
     Returns:
         courses_dict (dict): A dictionary of course IDs and their corresponding names.
     """
-    base_url = "https://canvas.harvard.edu/api/v1/courses"
+    url = "https://canvas.harvard.edu/api/v1/courses"
     headers = {"Authorization": f"Bearer {api_key}"}
-    courses_dict = {}
+    courses = []
+    courses_dict={}
     page = 1
 
     while True:
         params = {"page": page}
         try:
-            response = requests.get(base_url, headers=headers, params=params, timeout=5)
+            response = requests.get(url, headers=headers, params=params, timeout=15)
             response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
             courses_page = json.loads(response.text)  # Convert response text to dict
             for course in courses_page:
@@ -39,7 +40,6 @@ def get_courses(api_key):
             page += 1
         except requests.exceptions.RequestException as e:
             print("Error fetching courses:", e)
-            break
 
     return courses_dict
 
@@ -55,20 +55,20 @@ def get_quizzes(api_key, course):
     Returns:
         sorted_quiz_dict (dict): A dictionary containing the quizzes for the given course.
     """
+    quizzes = []
     quiz_dict = {}
     quiz_dict[str(course)] = {}
-    base_url = "https://canvas.harvard.edu/api/v1/courses/"
-    course_api = f"{course}/quizzes"
+    url = f"https://canvas.harvard.edu/api/v1/courses/{course}/quizzes"
     headers = {"Authorization": f"Bearer {api_key}"}
     page = 1
     while True:
         params = {"page": page, "per_page":"100"}
         try:
-            response = requests.get(base_url+course_api, headers=headers, params=params, timeout=5)
+            response = requests.get(url, headers=headers, params=params, timeout=15)
             response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
             quizzes_page = json.loads(response.text)  # Convert response text to dict
             for quiz in quizzes_page:
-                if quiz['html_url'].replace(base_url,'')[0:6] == course:
+                if quiz['html_url'].replace('https://canvas.harvard.edu/courses/','')[0:6] == course:
                     if 'Consolidation' in quiz['title']:
                         quiz_dict[str(course)][str(quiz['id'])] = quiz['title']
                 else:
@@ -95,7 +95,6 @@ def extract_text(html):
         extracted_text (str): A string of the plain text extracted from the html.
     """
 
-
     pattern = re.compile(r'>\s*([^<]+?)\s*<') # Regex pattern for text between html tags
 
     matches = pattern.findall(html) # Find all matches
@@ -103,7 +102,6 @@ def extract_text(html):
     extracted_text = ' '.join(matches).strip() # Join the matches
 
     return extracted_text
-
 
 def check_new_data(course, quiz, apikey, azurekey, endpoint):
     """
@@ -126,13 +124,13 @@ def check_new_data(course, quiz, apikey, azurekey, endpoint):
 
     try:
         url = f"{base_url}{course}/quizzes/{quiz}"
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
         quiz_page = json.loads(response.text)  # Convert response text to dict
         assignment_id = quiz_page['assignment_id']
 
         url = f"{base_url}{course}/quizzes/{quiz}/questions"
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
         questions_page = json.loads(response.text)  # Convert response text to dict
         qdf = pd.DataFrame.from_dict(questions_page)
@@ -143,7 +141,7 @@ def check_new_data(course, quiz, apikey, azurekey, endpoint):
             url = f"{base_url}{course}/assignments/{assignment_id}/submissions"
             params = {"page": page, "include[]":"submission_history","per_page":"100"}
 
-            response = requests.get(url, headers=headers, params=params, timeout=5)
+            response = requests.get(url, headers=headers, params=params, timeout=15)
             response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
             submissions_page = json.loads(response.text)  # Convert response text to dict
             for user_submission in submissions_page:
@@ -308,7 +306,6 @@ def instructor_feedback(course, quiz, azurekey, endpoint):
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
     questions = list(subset['question_name'].unique())
-    quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
 
     level_one = {}
     level_two = {}
@@ -338,23 +335,25 @@ def level_one_feedback(question, subset, azurekey, endpoint):
     question_subset = subset[subset['question_name'] == question]
 
     # Initialize an empty dictionary to hold the buckets
-    buckets = {}
-    l1_feedback = []
-    for accuracy_value in [1, 2, 3, 4]:
-        # Group the 'subset' into buckets based on 'accuracy' value
-        buckets[accuracy_value] = question_subset[question_subset['accuracy'] == accuracy_value]
+    a_buckets = {}
+    c_buckets = {}
 
-    for accuracy_value, bucket in buckets.items():
+    l1_feedback = []
+
+    for grade_value in [1, 2, 3, 4]:
+        # Group the 'subset' into buckets based on 'accuracy' value
+        a_buckets[grade_value] = question_subset[question_subset['accuracy'] == grade_value]
+        c_buckets[grade_value] = question_subset[question_subset['completeness'] == grade_value]
+
+    for grade_value, bucket in a_buckets.items():
         if len(bucket) == 0:
-            l1_feedback.append(f"No students received a {accuracy_value} for this question.")
+            l1_feedback.append(f"No students received a {grade_value} for this question.")
         else:
             student_answers = list(bucket['student_answer'])
             correct_answer = bucket['question_answer'].unique().item()
-            prompt = (f'The following students all received a {accuracy_value} for accuracy'
-                       'on a scale of 1-4 when compared to the correct answer. Come up with'
-                       'a summary in 100 words or less of why they received that score, what'
-                       'concepts they most frequently missed, and what concepts they most '
-                       'frequently got correct. '
+            prompt = ('Summarize in 200 words or less why the following students '
+                      f'received an {grade_value} for accuracy (on a scale of 1-4)'
+                       'compared to the correct answer. Start your response with "For Accuracy, "'
                        f'Student answers:{student_answers}'
                        f'Correct answer: {correct_answer}.')
 
@@ -377,6 +376,38 @@ def level_one_feedback(question, subset, azurekey, endpoint):
 
             question_feedback = response.choices[0].message.content
             l1_feedback.append(question_feedback)
+    for grade_value, bucket in c_buckets.items():
+        if len(bucket) == 0:
+            l1_feedback.append(f"No students received a {grade_value} for this question.")
+        else:
+            student_answers = list(bucket['student_answer'])
+            correct_answer = bucket['question_answer'].unique().item()
+            prompt = ('Summarize in 200 words or less why the following students '
+                      f'received an {grade_value} for completeness (on a scale of 1-4)'
+                       'compared to the correct answer. Start your response with "For Completeness, "'
+                       f'Student answers:{student_answers}'
+                       f'Correct answer: {correct_answer}.')
+
+            client = AzureOpenAI(
+                    api_key = azurekey,
+                    azure_endpoint = endpoint,
+                    api_version = "2024-04-01-preview"
+                )
+
+            response = client.chat.completions.create(
+                    model = "gpt-4o",
+                    messages=[
+                    {"role": "system", "content": ('You are a helpful course Teaching Assistant '
+                                                    'designed to provide helpful feedback to an '
+                                                    'Instructor regarding how their students are '
+                                                    'performing on quizzes.')},
+                    {"role": "user", "content": f"{prompt}"}
+                    ]
+                    )
+
+            question_feedback = response.choices[0].message.content
+            l1_feedback.append(question_feedback)
+
     return l1_feedback
 
 
@@ -394,9 +425,11 @@ def level_two_feedback(level_one, question, azurekey, endpoint):
         l2_feedback (str): a summary feedback string
     """
 
-    prompt = ('Summarize the following feedback for {question}. '
-              'Include what students most frequently missed, and '
-              'what they most frequently correctly identified. {level_one}.')
+
+    prompt = (f'In less than 200 words, summarize the Accuracy and Completion feedback for {question} in a single paragraph. '
+            'Include what students correctly and incorrectly identified, and what'
+             f' set complete answers apart from incomplete answers. {level_one}.')
+
 
     client = AzureOpenAI(
             api_key = azurekey,
@@ -421,7 +454,7 @@ def level_two_feedback(level_one, question, azurekey, endpoint):
 
 def level_three_feedback(level_two, azurekey, endpoint):
     """
-    Combines level two feedback to give a summary of student performance per quiz
+    Condenses level two feedback to give a summary of student performance per quiz
 
     Args:
         level_two (str): a summary of how students did per question.
@@ -432,13 +465,7 @@ def level_three_feedback(level_two, azurekey, endpoint):
         l1_feedback (list): a list of feedback strings per question
     """
 
-    prompt = ('Summarize the feedback provided in less than 100 words. '
-              'Example summary: "For this assessment exercise, students '
-              'correctly identified concept A, B, and C. Students struggled'
-              ' to identify D, and lacked a detailed understanding of X. '
-              'Exact mechanisms of Z were not well described. Overall, '
-              'students have a solid grasp of basic concepts, but need '
-              'more focus on understanding specific processes." '
+    prompt = ('Summarize the feedback provided in less than 200 words. '
               f'Feedback: {level_two}.')
 
     client = AzureOpenAI(
