@@ -1,50 +1,74 @@
+# -*- coding: utf-8 -*-
+"""Helper functions for app.py to create plots and create instructor feedback."""
+
 from __future__ import print_function
+import json
+import re
 import pandas as pd
 from openai import AzureOpenAI
-import json
 import requests
-import pandas as pd
-from llama_index.llms.azure_openai import AzureOpenAI as AzureOAI
-import re
 import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
 
+
 def get_courses(api_key):
-    url = "https://canvas.harvard.edu/api/v1/courses"
+    """
+    Fetches the list of courses from the Canvas API.
+
+    Args:
+        api_key (str): The API key for authentication.
+
+    Returns:
+        courses_dict (dict): A dictionary of course IDs and their corresponding names.
+    """
+    base_url = "https://canvas.harvard.edu/api/v1/courses"
     headers = {"Authorization": f"Bearer {api_key}"}
-    courses = []
-    courses_dict={}
+    courses_dict = {}
     page = 1
+
     while True:
         params = {"page": page}
         try:
-            response = requests.get(url, headers=headers, params=params)
+            response = requests.get(base_url, headers=headers, params=params, timeout=5)
             response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
-            courses_page = json.loads(response.text)  # Convert response text to dictionary using json.loads()
+            courses_page = json.loads(response.text)  # Convert response text to dict
             for course in courses_page:
                 courses_dict[str(course['id'])] = course['name']
             if "next" not in response.links:
                 break  # No more pages to fetch
             page += 1
         except requests.exceptions.RequestException as e:
-            print(f"Error fetching courses")
+            print("Error fetching courses:", e)
+            break
+
     return courses_dict
 
+
 def get_quizzes(api_key, course):
-    quizzes = []
+    """
+    Fetches the list of quizzes for a specific course from the Canvas API.
+
+    Args:
+        api_key (str): The API key for authentication.
+        course (str): The course ID.
+
+    Returns:
+        sorted_quiz_dict (dict): A dictionary containing the quizzes for the given course.
+    """
     quiz_dict = {}
     quiz_dict[str(course)] = {}
-    url = f"https://canvas.harvard.edu/api/v1/courses/{course}/quizzes"
+    base_url = "https://canvas.harvard.edu/api/v1/courses/"
+    course_api = f"{course}/quizzes"
     headers = {"Authorization": f"Bearer {api_key}"}
     page = 1
     while True:
         params = {"page": page, "per_page":"100"}
         try:
-            response = requests.get(url, headers=headers, params=params)
+            response = requests.get(base_url+course_api, headers=headers, params=params, timeout=5)
             response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
-            quizzes_page = json.loads(response.text)  # Convert response text to dictionary using json.loads()
+            quizzes_page = json.loads(response.text)  # Convert response text to dict
             for quiz in quizzes_page:
-                if quiz['html_url'].replace('https://canvas.harvard.edu/courses/','')[0:6] == course:
+                if quiz['html_url'].replace(base_url,'')[0:6] == course:
                     if 'Consolidation' in quiz['title']:
                         quiz_dict[str(course)][str(quiz['id'])] = quiz['title']
                 else:
@@ -54,59 +78,74 @@ def get_quizzes(api_key, course):
             page += 1
         except requests.exceptions.RequestException as e:
             print(f"Error fetching quizzes for course {course}: {e}")
-        
+
         sorted_quiz_dict = dict(sorted(quiz_dict[course].items(), key=lambda item: item[1]))
 
     return sorted_quiz_dict
 
 
-# Load JSON data into a DataFrame
-def load_json_to_dataframe(json_file):
-    with open(json_file, 'r') as f:
-        data = json.load(f)
-    newdf = pd.DataFrame(data)
-    return newdf
-
 def extract_text(html):
-    # Regex pattern to match the text between the tags
-    pattern = re.compile(r'>\s*([^<]+?)\s*<')
+    """
+    Extracts text from malformatted string returned from Canvas API.
+    
+    Args:
+        html (str): The html string to be parsed.
 
-    # Find all matches
-    matches = pattern.findall(html)
+    Returns:
+        extracted_text (str): A string of the plain text extracted from the html.
+    """
 
-    # Join the matches to form the complete extracted text
-    extracted_text = ' '.join(matches).strip()
+
+    pattern = re.compile(r'>\s*([^<]+?)\s*<') # Regex pattern for text between html tags
+
+    matches = pattern.findall(html) # Find all matches
+
+    extracted_text = ' '.join(matches).strip() # Join the matches
 
     return extracted_text
 
-# Function to compare two dataframes and find differences
+
 def check_new_data(course, quiz, apikey, azurekey, endpoint):
-    headers = {"Authorization": f"Bearer {api_key}"}
+    """
+    Checks for un-graded assessment submissions in the Canvas API.
+    
+    Args:
+        course (str): The selected course ID.
+        quiz (str): The selected quiz ID.
+        apikey (str): The canvas API key.
+        azurekey (str): The Azure API key.
+        endpoint (str): The Azure endpoint.
+
+    Returns:
+        None
+    """
+    headers = {"Authorization": f"Bearer {apikey}"}
     pre_graded_df = pd.read_json('Data/graded_quizzes.json')
     un_graded = []
+    base_url = "https://canvas.harvard.edu/api/v1/courses/"
 
     try:
-        url = f"https://canvas.harvard.edu/api/v1/courses/{course}/quizzes/{quiz}"
-        response = requests.get(url, headers=headers)
+        url = f"{base_url}{course}/quizzes/{quiz}"
+        response = requests.get(url, headers=headers, timeout=5)
         response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
-        quiz_page = json.loads(response.text)  # Convert response text to dictionary using json.loads()
+        quiz_page = json.loads(response.text)  # Convert response text to dict
         assignment_id = quiz_page['assignment_id']
 
-        url = f"https://canvas.harvard.edu/api/v1/courses/{course}/quizzes/{quiz}/questions"
-        response = requests.get(url, headers=headers)
+        url = f"{base_url}{course}/quizzes/{quiz}/questions"
+        response = requests.get(url, headers=headers, timeout=5)
         response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
-        questions_page = json.loads(response.text)  # Convert response text to dictionary using json.loads()
-        questions_df = pd.DataFrame.from_dict(questions_page)
-        questions_df = questions_df[(questions_df['question_type']=="essay_question")]
+        questions_page = json.loads(response.text)  # Convert response text to dict
+        qdf = pd.DataFrame.from_dict(questions_page)
+        qdf = qdf[(qdf['question_type']=="essay_question")]
 
         page = 1
         while True:
-            url = f"https://canvas.harvard.edu/api/v1/courses/{course}/assignments/{assignment_id}/submissions"
+            url = f"{base_url}{course}/assignments/{assignment_id}/submissions"
             params = {"page": page, "include[]":"submission_history","per_page":"100"}
 
-            response = requests.get(url, headers=headers, params=params)
+            response = requests.get(url, headers=headers, params=params, timeout=5)
             response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
-            submissions_page = json.loads(response.text)  # Convert response text to dictionary using json.loads()
+            submissions_page = json.loads(response.text)  # Convert response text to dict
             for user_submission in submissions_page:
                 submission_id = user_submission['id']
                 student_score = user_submission['score']
@@ -115,8 +154,9 @@ def check_new_data(course, quiz, apikey, azurekey, endpoint):
                 check_if_graded = pre_graded_df[(pre_graded_df['submission_id']==submission_id)]
 
                 if user_submission['submission_history'][0].get('submission_data'):
-                    for submission_data in user_submission['submission_history'][0].get('submission_data'):
-                        write_dict = {'quiz_id':'', 
+                    submission = user_submission['submission_history'][0].get('submission_data')
+                    for user_data in submission:
+                        write_dict = {'quiz_id':'',
                                     'quiz_type':'', 
                                     'quiz_title':'',
                                     'history_id':'',
@@ -144,34 +184,34 @@ def check_new_data(course, quiz, apikey, azurekey, endpoint):
                             write_dict['quiz_question_count'] = quiz_page['question_count']
                             write_dict['quiz_points_possible'] = quiz_page['points_possible']
                             write_dict['question_points_possible'] = quiz_page['points_possible']
-        
+
                             #from questions_df
-                            questions_df_filtered = questions_df[(questions_df['id']==submission_data['question_id']) 
-                                                                & (questions_df['quiz_id']==int(quiz))]
-                            
-                            write_dict['question_text'] = extract_text(questions_df_filtered['question_text'].item())
-                            write_dict['question_name'] = questions_df_filtered['question_name'].item()
-                            write_dict['question_type'] = questions_df_filtered['question_type'].item()
-                            write_dict['question_answer'] = questions_df_filtered['neutral_comments'].item()                 
+                            qdf_filtered = qdf[(qdf['id']==user_data['question_id'])
+                                                                & (qdf['quiz_id']==int(quiz))]
+
+                            write_dict['question_text'] = extract_text(qdf_filtered['question_text'].item())
+                            write_dict['question_name'] = qdf_filtered['question_name'].item()
+                            write_dict['question_type'] = qdf_filtered['question_type'].item()
+                            write_dict['question_answer'] = qdf_filtered['neutral_comments'].item()
 
                             #from submission_data
-                            write_dict['history_id'] = submission_data['question_id']
-                            write_dict['answer_points_scored'] = submission_data['points']
-                            write_dict['student_answer'] = submission_data['text']
+                            write_dict['history_id'] = user_data['question_id']
+                            write_dict['answer_points_scored'] = user_data['points']
+                            write_dict['student_answer'] = user_data['text']
                             write_dict['attempt'] = attempt
                             write_dict['submission_id'] = submission_id
                             write_dict['student_score'] = student_score
                             write_dict['course_id'] = course
-
-                            accuracy, completeness = grade_answer(write_dict['student_answer'], write_dict['question_answer'], azurekey, endpoint)
+                            accuracy, completeness = grade_answer(write_dict['student_answer'],
+                                                                  write_dict['question_answer'],
+                                                                  azurekey,
+                                                                  endpoint)
                             write_dict['accuracy'] = accuracy
                             write_dict['completeness'] = completeness
-                            
                             #reorder the columns
                             write_dict = pd.DataFrame.from_records(write_dict, index=[0])
                             write_dict = write_dict[pre_graded_df.columns]
                             write_dict = write_dict.to_dict('records')[0]
-                            
                             un_graded.append(write_dict)
 
                         else:
@@ -180,10 +220,10 @@ def check_new_data(course, quiz, apikey, azurekey, endpoint):
             if "next" not in response.links:
                 break  # No more pages to fetch
             page += 1
-            
+
     except requests.exceptions.RequestException as e:
         print(f"Error fetching quizzes for course {course}: {e}")
-        
+
     if len(un_graded) > 0:
         with open('Data/graded_quizzes.json', "r") as file:
             data = file.read()[:-1]
@@ -193,7 +233,7 @@ def check_new_data(course, quiz, apikey, azurekey, endpoint):
         with open('Data/graded_quizzes.json', "a") as outfile:
             for record in un_graded:
                 if record == un_graded[-1]:
-                    json.dump(record, outfile, indent=2)                
+                    json.dump(record, outfile, indent=2)
                 else:
                     json.dump(record, outfile, indent=2)
                     outfile.write(',')
@@ -201,7 +241,31 @@ def check_new_data(course, quiz, apikey, azurekey, endpoint):
             outfile.write(']')
 
 def grade_answer(student_answer, correct_answer, azurekey, endpoint):
-    prompt = "Compare the student answer to the correct answer. Rate the accuracy (a measure of how correct the student is) and completeness (did the student identify all components of the question) of the student answer according to these scales: Accuracy Options: 1 - not accurate, 2 - somewhat accurate, 3 - mostly accurate, 4 - completely accurate. Completeness: 1 - incomplete, 2 - partially complete, 3 - mostly complete, 4 - complete. Explain your answer briefly. Format your answer as a list separated by |. Example: 3|4|explanation" +f"Student Answer:{student_answer}\nCorrect Answer:{correct_answer}."
+    """
+    Compares the student answer to the correct answer and assigns it a score for
+    accuracy and compeleteness.
+    
+    Args:
+        student_answer (str): The students response to the question.
+        correct_answer (str): The correct answer to the question.
+        azurekey (str): The Azure API key.
+        endpoint (str): The Azure endpoint.
+
+    Returns:
+        accuracy (str): a score for how accurate the students response was
+        completeness (str): a score for how complete the students response was
+    """
+
+    prompt = ('Compare the student answer to the correct answer. '
+              'Rate the accuracy (a measure of how correct the student is) '
+              'and completeness (did the student identify all components of the '
+              'question) of the student answer according to these scales: '
+              'Accuracy Options: 1 - not accurate, 2 - somewhat accurate, '
+              '3 - mostly accurate, 4 - completely accurate. Completeness: '
+              '1 - incomplete, 2 - partially complete, 3 - mostly complete, '
+              '4 - complete. Explain your answer briefly. Format your answer '
+              'as a list separated by |. Example: 3|4|explanation" +f"Student '
+              f'Answer:{student_answer}\nCorrect Answer:{correct_answer}.')
 
     client = AzureOpenAI(
             api_key = azurekey,
@@ -225,28 +289,54 @@ def grade_answer(student_answer, correct_answer, azurekey, endpoint):
 
 
 def instructor_feedback(course, quiz, azurekey, endpoint):
-    #sort/group the student scores into buckets
+    """
+    Bins all grades for all questions on a quiz, and outputs summative feedback 
+    of all students performance.
+
+    Args:
+        course (str): The course ID.
+        quiz (str): The quiz ID.
+        azurekey (str): The Azure API key.
+        endpoint (str): The Azure endpoint.
+
+    Returns:
+        level_three_feedback (str): a summary of all students performance
+    """
+
     df = pd.read_json('Data/graded_quizzes.json')
 
     # Filter the DataFrame
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
     questions = list(subset['question_name'].unique())
     quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
-    
+
     level_one = {}
     level_two = {}
-    
+
     for question in questions:
         # Group the 'subset' into buckets based on 'accuracy' value
         level_one[question] = level_one_feedback(question, subset, azurekey, endpoint)
         level_two[question] = level_two_feedback(level_one[question], question, azurekey, endpoint)
-    
+
     return level_three_feedback(level_two, azurekey, endpoint)
 
 
 def level_one_feedback(question, subset, azurekey, endpoint):
+    """
+    Bins all grades for each question on a quiz, and outputs a summary string for each bin
+    containing what students did well/not well on per question
+
+    Args:
+        question (str): The question name being graded (Question 1, Question 2, etc.).
+        subset (str): The subset df of all graded data.
+        azurekey (str): The Azure API key.
+        endpoint (str): The Azure endpoint.
+
+    Returns:
+        l1_feedback (list): a list of feedback strings per question
+    """
     question_subset = subset[subset['question_name'] == question]
-    
+
     # Initialize an empty dictionary to hold the buckets
     buckets = {}
     l1_feedback = []
@@ -260,7 +350,13 @@ def level_one_feedback(question, subset, azurekey, endpoint):
         else:
             student_answers = list(bucket['student_answer'])
             correct_answer = bucket['question_answer'].unique().item()
-            prompt = f"The following students all received a {accuracy_value} for accuracy on a scale of 1-4 when compared to the correct answer. Come up with a summary in 100 words or less of why they received the score they did, what concepts they most frequently missed, and what concepts they most frequently got correct. \n Student answers:{student_answers} \n Correct answer: {correct_answer}."
+            prompt = (f'The following students all received a {accuracy_value} for accuracy'
+                       'on a scale of 1-4 when compared to the correct answer. Come up with'
+                       'a summary in 100 words or less of why they received that score, what'
+                       'concepts they most frequently missed, and what concepts they most '
+                       'frequently got correct. '
+                       f'Student answers:{student_answers}'
+                       f'Correct answer: {correct_answer}.')
 
             client = AzureOpenAI(
                     api_key = azurekey,
@@ -268,21 +364,39 @@ def level_one_feedback(question, subset, azurekey, endpoint):
                     api_version = "2024-04-01-preview"
                 )
 
-            response = client.chat.completions.create(  model = "gpt-4o",
-                                                        messages=[
-                                                            {"role": "system", "content": "You are a helpful course Teaching Assistant designed to provide helpful feedback to an Instructor regarding how their students are performing on quizzes."},
-                                                            {"role": "user", "content": f"{prompt}"}
-                                                        ]
-                                                    )
+            response = client.chat.completions.create(
+                    model = "gpt-4o",
+                    messages=[
+                    {"role": "system", "content": ('You are a helpful course Teaching Assistant '
+                                                    'designed to provide helpful feedback to an '
+                                                    'Instructor regarding how their students are '
+                                                    'performing on quizzes.')},
+                    {"role": "user", "content": f"{prompt}"}
+                    ]
+                    )
 
             question_feedback = response.choices[0].message.content
             l1_feedback.append(question_feedback)
     return l1_feedback
 
 
-
 def level_two_feedback(level_one, question, azurekey, endpoint):
-    prompt = f"Summarize the following feedback for {question}. Include what students most frequently missed, and what they most frequently correctly identified. {level_one}."
+    """
+    Combines level one feedback to give a summary of how students did per question
+
+    Args:
+        level_one (list): A list of summaries for each grade bin.
+        question (str): The name of the question.
+        azurekey (str): The Azure API key.
+        endpoint (str): The Azure endpoint.
+
+    Returns:
+        l2_feedback (str): a summary feedback string
+    """
+
+    prompt = ('Summarize the following feedback for {question}. '
+              'Include what students most frequently missed, and '
+              'what they most frequently correctly identified. {level_one}.')
 
     client = AzureOpenAI(
             api_key = azurekey,
@@ -290,20 +404,42 @@ def level_two_feedback(level_one, question, azurekey, endpoint):
             api_version = "2024-04-01-preview"
         )
 
-    response = client.chat.completions.create(  model = "gpt-4o",
-                                                messages=[
-                                                    {"role": "system", "content": "You are a helpful course Teaching Assistant designed to provide helpful feedback to an Instructor regarding how their students are performing on quizzes."},
-                                                    {"role": "user", "content": f"{prompt}"}
-                                                ]
-                                            )
+    response = client.chat.completions.create(
+                model = "gpt-4o",
+                messages=[
+                    {"role": "system", "content": ('You are a helpful course Teaching Assistant'
+                                                   'designed to provide helpful feedback to an '
+                                                   'Instructor regarding how their students are '
+                                                   'performing on quizzes.')},
+                    {"role": "user", "content": f"{prompt}"}
+                ]
+            )
 
-    question_feedback = response.choices[0].message.content
-    return(question_feedback)
-    
+    l2_feedback = response.choices[0].message.content
+    return l2_feedback
 
 
 def level_three_feedback(level_two, azurekey, endpoint):
-    prompt = f"Summarize the feedback provided in less than 100 words. Example summary: 'For this assessment exercise, students correctly identified concept A, B, and C. Students struggled to identify D, and lacked a detailed understanding of X. Exact mechanisms of Z were not well described. Overall, students have a solid grasp of basic concepts, but need more focus on understanding specific processes.' Feedback: {level_two}."
+    """
+    Combines level two feedback to give a summary of student performance per quiz
+
+    Args:
+        level_two (str): a summary of how students did per question.
+        azurekey (str): The Azure API key.
+        endpoint (str): The Azure endpoint.
+
+    Returns:
+        l1_feedback (list): a list of feedback strings per question
+    """
+
+    prompt = ('Summarize the feedback provided in less than 100 words. '
+              'Example summary: "For this assessment exercise, students '
+              'correctly identified concept A, B, and C. Students struggled'
+              ' to identify D, and lacked a detailed understanding of X. '
+              'Exact mechanisms of Z were not well described. Overall, '
+              'students have a solid grasp of basic concepts, but need '
+              'more focus on understanding specific processes." '
+              f'Feedback: {level_two}.')
 
     client = AzureOpenAI(
             api_key = azurekey,
@@ -311,55 +447,39 @@ def level_three_feedback(level_two, azurekey, endpoint):
             api_version = "2024-04-01-preview"
         )
 
-    response = client.chat.completions.create(  model = "gpt-4o",
-                                                messages=[
-                                                    {"role": "system", "content": "You are a helpful course Teaching Assistant designed to provide helpful feedback to an Instructor regarding how their students are performing on quizzes."},
-                                                    {"role": "user", "content": f"{prompt}"}
-                                                ]
-                                            )
+    response = client.chat.completions.create(
+        model = "gpt-4o",
+        messages=[
+            {"role": "system", "content": ('You are a helpful course Teaching Assistant '
+                                           'designed to provide helpful feedback to an '
+                                           'Instructor regarding how their students are '
+                                           'performing on quizzes.')},
+            {"role": "user", "content": f"{prompt}"}
+        ]
+    )
 
     question_feedback = response.choices[0].message.content
-    return(question_feedback)    
+    return question_feedback
 
-
-
-#TODO: ideas for instructor feedback:
-#Hierarchical
-#Do the same as the grading, turn it into a prompt
-#Grey's Idea
-#Sort the student scores so you have all the poor performing ones on one end
-#and the good performing ones are on the other. 
-#Level one: why did the ones get ones? twos get twos?
-#Level two: Concepts missed/correct per group
-#Level three: Overall concepts missed/correct
-#Level four: Report
-#Add a word limit in 500 words or less in the prompt
-
-#Data Quality Issue: Make CBB10 == CBB 10, same quiz just messy data
-
-#Filter by question
-
-#level one feedback: per bin
-#level two feedback: per question
-#level three feedback: per quiz
-#level four feedback: per quiz group
-
-#download report button
-
-
-
-#GRAPHS
 
 def accuracy_per_question_bar(course, quiz):
-    # Load the JSON data
+    """
+    Generate a bar plot for accuracy per question.
+    
+    Parameters:
+    course_id (int): The course identifier.
+    quiz_id (int): The quiz identifier.
+
+    Returns:
+    plot: A bar plot of accuracy per question.
+    """
+
     df = pd.read_json('Data/graded_quizzes.json')
 
-    # Filter the DataFrame
-    subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
+    subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))] # Filter the df
     quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
 
-    # Count the number of students who scored 1, 2, 3, or 4 per question
-    score_counts = subset.groupby(['question_name', 'accuracy']).size().unstack(fill_value=0).reset_index()
+    score_counts = subset.groupby(['question_name', 'accuracy']).size().unstack(fill_value=0).reset_index() # Count students who scored 1, 2, 3, or 4 per question
 
     # Normalize the counts as a percentage of the total responses per question
     score_counts.set_index('question_name', inplace=True)
@@ -392,6 +512,17 @@ def accuracy_per_question_bar(course, quiz):
     return fig
 
 def completeness_per_question_bar(course, quiz):
+    """
+    Generate a bar plot for completeness per question.
+    
+    Parameters:
+    course_id (int): The course identifier.
+    quiz_id (int): The quiz identifier.
+
+    Returns:
+    plot: A bar plot of completeness per question.
+    """
+
     # Load the JSON data
     df = pd.read_json('Data/graded_quizzes.json')
 
@@ -433,6 +564,17 @@ def completeness_per_question_bar(course, quiz):
     return fig
 
 def avg_of_scores_hist(course, quiz):
+    """
+    Generate a histogram for the distribution of scores.
+    
+    Parameters:
+    course_id (int): The course identifier.
+    quiz_id (int): The quiz identifier.
+
+    Returns:
+    plot: A histogram of the distribution of scores.
+    """
+
     # Load the JSON data
     df = pd.read_json('Data/graded_quizzes.json')
 
@@ -440,7 +582,7 @@ def avg_of_scores_hist(course, quiz):
     subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
 
     quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
-    
+
     # Calculate average accuracy and completeness per question
     average_metrics = subset.groupby('question_name')[['accuracy', 'completeness']].mean().reset_index()
     average_metrics['accuracy'] = average_metrics['accuracy'].round(2)
@@ -477,6 +619,17 @@ def avg_of_scores_hist(course, quiz):
     return fig
 
 def accuracy(course, quiz):
+    """
+    Generate a line plot for accuracy across similar questions.
+    
+    Parameters:
+    course_id (int): The course identifier.
+    quiz_id (int): The quiz identifier.
+
+    Returns:
+    plot: A line plot of accuracy across similar questions.
+    """
+
     # Load the JSON data
     df = pd.read_json('Data/graded_quizzes.json')
 
@@ -504,21 +657,19 @@ def accuracy(course, quiz):
 
     # Plot the average accuracy per quiz
     fig.add_trace(go.Scatter(
-        x=average_accuracy_per_quiz['quiz_title'], 
-        y=average_accuracy_per_quiz['accuracy'], 
-        mode='lines+markers', 
+        x=average_accuracy_per_quiz['quiz_title'],
+        y=average_accuracy_per_quiz['accuracy'],
+        mode='lines+markers',
         name='Average Accuracy',
         hoverinfo='text',
         text=average_accuracy_per_quiz['accuracy']))
 
-    # Add trend line using linear regression
-    X = average_accuracy_per_quiz['quiz_num'].values.reshape(-1, 1)
+    x = average_accuracy_per_quiz['quiz_num'].values.reshape(-1, 1)
     y = average_accuracy_per_quiz['accuracy'].values
 
-    # Fit linear regression model
     model = LinearRegression()
-    model.fit(X, y)
-    trend_line = model.predict(X)
+    model.fit(x, y)
+    trend_line = model.predict(x)
 
     fig.add_trace(go.Scatter(
         x=average_accuracy_per_quiz['quiz_title'],
@@ -528,7 +679,6 @@ def accuracy(course, quiz):
         line=dict(dash='dash')
     ))
 
-    # Update layout
     fig.update_layout(
         title=f'Average Total Accuracy for {quiz_group} Quizzes',
         xaxis_title='Quiz Title',
@@ -539,11 +689,21 @@ def accuracy(course, quiz):
     return fig
 
 def completeness(course, quiz):
+    """
+    Generate a line plot for completeness across similar questions.
+    
+    Parameters:
+    course_id (int): The course identifier.
+    quiz_id (int): The quiz identifier.
+
+    Returns:
+    plot: A line plot of completeness across similar questions.
+    """
+
     # Load the JSON data
     df = pd.read_json('Data/graded_quizzes.json')
 
-    # Filter the DataFrame
-    subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))]
+    subset = df[(df['quiz_id'] == int(quiz)) & (df['course_id'] == int(course))] # Filter the df
     quiz_group = subset['quiz_title'].unique().item().split(' ')[0]
 
     # Filter for quizzes with the same quiz group in the title
@@ -566,9 +726,9 @@ def completeness(course, quiz):
 
     # Plot the average completeness per quiz
     fig.add_trace(go.Scatter(
-        x=average_completeness_per_quiz['quiz_title'], 
-        y=average_completeness_per_quiz['completeness'], 
-        mode='lines+markers', 
+        x=average_completeness_per_quiz['quiz_title'],
+        y=average_completeness_per_quiz['completeness'],
+        mode='lines+markers',
         name='Average Completeness',
         hoverinfo='text',
         text=average_completeness_per_quiz['completeness']))
