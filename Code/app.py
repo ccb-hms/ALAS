@@ -13,6 +13,7 @@ from helpers import  (check_new_data,
 from shiny.express import input, output, render, ui
 from shiny import reactive
 from shinywidgets import output_widget, render_widget 
+import os
 matplotlib.use("agg")
 
 ui.tags.style(
@@ -27,8 +28,6 @@ ui.tags.style(
 ui.busy_indicators.use(spinners=False, pulse=True)
 
 with ui.sidebar():
-    ui.input_password("azurekey", "Azure API Key:", "")
-    ui.input_password("endpoint", "Azure API Endpoint:", "")
     ui.input_password("apikey", "Canvas API Key:", "")
     ui.input_action_button("go", "Go"),
 
@@ -57,10 +56,6 @@ with ui.sidebar():
     def _():
         if input.apikey() == "":
             print("Please Enter a valid API Key")
-        elif input.azurekey() == "":
-            print("Please Enter a valid Azure API Key")
-        elif input.endpoint() == "":
-            print("Please Enter a valid Azure endpoint")
         else:
             courses_dict = get_courses(input.apikey())
             ui.update_selectize("course", choices=courses_dict)
@@ -80,7 +75,24 @@ with ui.panel_absolute(width="75%"):
     with ui.navset_bar(title="Student Performance"):
         @reactive.event(input.generate)
         def _():
-            check_new_data(input.course(), input.cae(), input.apikey(), input.azurekey(), input.endpoint())     
+            check_new_data(input.course(), input.cae(), input.apikey(), os.environ.get("azure_key"), os.environ.get("endpoint"))     
+
+        with ui.nav_panel(title="Start Guide"):
+            @render.text
+            def text():
+                return '''Welcome to ALAS
+                          '''
+            @render.text
+            def text2():
+                return '''To get started, please visit https://canvas.harvard.edu/, go to your profile settings, and create a new access token. 
+                          This is your unique API key that should not be shared with anyone.
+                          '''
+                        
+            @render.text
+            def text3():
+                return '''Once you have this key copied/saved in a secure location, paste it into the API key box to get started.
+                          '''
+
 
         with ui.nav_panel(title="Graphs"):
             @render_widget
@@ -117,7 +129,7 @@ with ui.panel_absolute(width="75%"):
             @render.text
             @reactive.event(input.generate)
             def feedback():
-                return instructor_feedback(input.course(), input.cae(), input.azurekey(), input.endpoint())
+                return instructor_feedback(input.course(), input.cae(), os.environ.get("azure_key"), os.environ.get("endpoint"))
 
         with ui.nav_panel(title="Source Data"):
             @render.download(label="Download CSV", filename="data.csv")

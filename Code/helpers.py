@@ -9,7 +9,7 @@ from openai import AzureOpenAI
 import requests
 import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
-
+import os
 
 def get_courses(api_key):
     """
